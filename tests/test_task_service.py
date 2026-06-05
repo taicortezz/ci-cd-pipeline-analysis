@@ -28,6 +28,14 @@ def test_service_creates_task_as_pending():
     assert task.status == TaskStatus.PENDING
 
 
+def test_service_creates_task_with_priority():
+    service = TaskService()
+
+    task = service.create_task(make_task(priority=TaskPriority.HIGH))
+
+    assert task.priority == TaskPriority.HIGH
+
+
 def test_service_lists_all_tasks():
     service = TaskService()
     service.create_task(make_task("First"))
@@ -36,6 +44,12 @@ def test_service_lists_all_tasks():
     tasks = service.list_tasks()
 
     assert len(tasks) == 2
+
+
+def test_service_list_is_empty_initially():
+    service = TaskService()
+
+    assert service.list_tasks() == []
 
 
 def test_service_gets_existing_task():
@@ -63,6 +77,16 @@ def test_service_completes_existing_task():
     assert completed.status == TaskStatus.COMPLETED
 
 
+def test_service_complete_keeps_task_id():
+    service = TaskService()
+    task = service.create_task(make_task())
+
+    completed = service.complete_task(task.id)
+
+    assert completed is not None
+    assert completed.id == task.id
+
+
 def test_service_returns_none_when_completing_missing_task():
     service = TaskService()
 
@@ -77,6 +101,16 @@ def test_service_deletes_existing_task():
 
     assert deleted is True
     assert service.get_task(task.id) is None
+
+
+def test_service_delete_does_not_reset_next_id():
+    service = TaskService()
+    first = service.create_task(make_task("First"))
+    service.delete_task(first.id)
+
+    second = service.create_task(make_task("Second"))
+
+    assert second.id == 2
 
 
 def test_service_returns_false_when_deleting_missing_task():
@@ -96,3 +130,14 @@ def test_service_calculates_stats():
     assert stats.total_tasks == 2
     assert stats.completed_tasks == 1
     assert stats.pending_tasks == 1
+
+
+def test_service_clear_removes_tasks_and_resets_id():
+    service = TaskService()
+    service.create_task(make_task())
+
+    service.clear()
+    task = service.create_task(make_task())
+
+    assert service.get_stats().total_tasks == 1
+    assert task.id == 1

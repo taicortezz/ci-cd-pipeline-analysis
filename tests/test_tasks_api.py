@@ -38,6 +38,34 @@ def test_create_task_returns_created_task(client):
     assert "created_at" in data
 
 
+def test_create_task_with_low_priority(client):
+    response = create_task(client, title="Low priority task", priority="low")
+
+    assert response.status_code == 201
+    assert response.json()["priority"] == "low"
+
+
+def test_create_task_with_high_priority(client):
+    response = create_task(client, title="High priority task", priority="high")
+
+    assert response.status_code == 201
+    assert response.json()["priority"] == "high"
+
+
+def test_create_task_preserves_description(client):
+    response = client.post(
+        "/tasks",
+        json={
+            "title": "Write report",
+            "description": "Document experiment results",
+            "priority": "medium",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["description"] == "Document experiment results"
+
+
 def test_create_task_with_invalid_payload_returns_validation_error(client):
     response = client.post("/tasks", json={"title": "Missing fields"})
 
@@ -90,6 +118,17 @@ def test_list_tasks_returns_empty_list_when_no_tasks_exist(client):
     assert response.json() == []
 
 
+def test_list_tasks_preserves_creation_order(client):
+    create_task(client, title="First")
+    create_task(client, title="Second")
+    create_task(client, title="Third")
+
+    response = client.get("/tasks")
+
+    titles = [task["title"] for task in response.json()]
+    assert titles == ["First", "Second", "Third"]
+
+
 def test_get_task_by_id_returns_task(client):
     created = create_task(client).json()
 
@@ -97,6 +136,15 @@ def test_get_task_by_id_returns_task(client):
 
     assert response.status_code == 200
     assert response.json()["id"] == created["id"]
+
+
+def test_get_task_by_id_returns_task_title(client):
+    created = create_task(client, title="Find this task").json()
+
+    response = client.get(f"/tasks/{created['id']}")
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "Find this task"
 
 
 def test_get_task_by_unknown_id_returns_not_found(client):
@@ -113,6 +161,26 @@ def test_complete_task_updates_status(client):
 
     assert response.status_code == 200
     assert response.json()["status"] == "completed"
+
+
+def test_complete_task_keeps_original_title(client):
+    created = create_task(client, title="Keep title").json()
+
+    response = client.patch(f"/tasks/{created['id']}/complete")
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "Keep title"
+
+
+def test_complete_task_is_idempotent(client):
+    created = create_task(client).json()
+
+    first_response = client.patch(f"/tasks/{created['id']}/complete")
+    second_response = client.patch(f"/tasks/{created['id']}/complete")
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert second_response.json()["status"] == "completed"
 
 
 def test_complete_unknown_task_returns_not_found(client):
@@ -137,6 +205,17 @@ def test_delete_unknown_task_returns_not_found(client):
     assert response.status_code == 404
 
 
+def test_delete_one_task_keeps_other_tasks(client):
+    first = create_task(client, title="Delete me").json()
+    second = create_task(client, title="Keep me").json()
+
+    client.delete(f"/tasks/{first['id']}")
+    response = client.get(f"/tasks/{second['id']}")
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "Keep me"
+
+
 def test_task_stats_counts_pending_and_completed_tasks(client):
     first = create_task(client).json()
     create_task(client, title="Second")
@@ -150,3 +229,27 @@ def test_task_stats_counts_pending_and_completed_tasks(client):
         "completed_tasks": 1,
         "pending_tasks": 1,
     }
+
+
+def test_task_stats_returns_zero_when_no_tasks_exist(client):
+    response = client.get("/tasks/stats")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "total_tasks": 0,
+        "completed_tasks": 0,
+        "pending_tasks": 0,
+    }
+
+
+def test_task_stats_counts_all_completed_tasks(client):
+    first = create_task(client, title="First").json()
+    second = create_task(client, title="Second").json()
+    client.patch(f"/tasks/{first['id']}/complete")
+    client.patch(f"/tasks/{second['id']}/complete")
+
+    response = client.get("/tasks/stats")
+
+    assert response.status_code == 200
+    assert response.json()["completed_tasks"] == 2
+    assert response.json()["pending_tasks"] == 0

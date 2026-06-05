@@ -31,6 +31,26 @@ def test_task_create_rejects_invalid_priority():
         )
 
 
+def test_task_create_accepts_low_priority():
+    task = TaskCreate(
+        title="Study",
+        description="Low priority",
+        priority="low",
+    )
+
+    assert task.priority == "low"
+
+
+def test_task_create_accepts_high_priority():
+    task = TaskCreate(
+        title="Study",
+        description="High priority",
+        priority="high",
+    )
+
+    assert task.priority == "high"
+
+
 def test_task_rejects_invalid_status():
     with pytest.raises(ValidationError):
         Task(
